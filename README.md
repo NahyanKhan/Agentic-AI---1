@@ -1,6 +1,6 @@
 # ReviewCrew
 
-ReviewCrew is a local-first multi-agent code review and debugging app built for Assignment 1's **Code Review & Debug Squad** option. It accepts Python snippets, routes debugging, style, explanation, and testing requests, and combines deterministic analysis with optional LLM feedback grounded in a Chroma knowledge base.
+ReviewCrew is a multi-agent code review and debugging app built for Assignment 1's **Code Review & Debug Squad** option. It accepts Python snippets, routes debugging, style, explanation, and testing requests, and combines deterministic analysis with optional LLM feedback grounded in a Chroma knowledge base.
 
 ## What it demonstrates
 
@@ -13,7 +13,7 @@ ReviewCrew is a local-first multi-agent code review and debugging app built for 
 - **LangChain + LCEL**: `ChatPromptTemplate | model | StrOutputParser` is used for model calls.
 - **ChromaDB**: persists coding guidance and retrieves by similarity; local Hugging Face embeddings are used by default.
 
-The reviewer remains useful without an API key: deterministic agents still produce findings and tests. LLM features become active when a supported model is configured. Prompt templates and routing decisions are visible in the app's **Prompt & Architecture** panel.
+The reviewer remains useful without an API key: deterministic agents still produce findings and tests. LLM features become active when an OpenAI-compatible model and API key are configured. Prompt templates and routing decisions are visible in the app's **Prompt & Architecture** panel.
 
 ## Start
 
@@ -31,9 +31,9 @@ On first launch, Chroma downloads the configured embedding model (`sentence-tran
 
 ### Optional LLM
 
-Choose **Ollama** in the sidebar and enter a locally installed model name (default `llama3.1`), or choose **OpenAI-compatible API** and enter a model name plus API key. For an OpenAI-compatible endpoint, set `OPENAI_BASE_URL` if needed. Credentials are held only in Streamlit session state and are not written to disk by this app.
+Choose **OpenAI-compatible API** in the sidebar and enter a model name, API key, and optional Base URL. OpenAI works with the Base URL left blank. Other providers work when they expose an OpenAI-compatible chat completions API; use the model name and Base URL provided by that service. Credentials are held only in Streamlit session state and are not written to disk by this app.
 
-Ollama requires its local service to be running. API mode sends the code and prompt to the configured provider; do not submit secrets or proprietary code unless that provider is approved for them.
+API mode sends the code and prompt to the configured provider; do not submit secrets or proprietary code unless that provider is approved for them.
 
 ## Code execution safety
 
@@ -56,7 +56,7 @@ prompts/               Human-readable prompt templates
 
 | Acceptance criterion | Implementation |
 |---|---|
-| LLM integration | Optional Ollama or OpenAI-compatible model adapter |
+| LLM integration | Optional OpenAI-compatible API model adapter |
 | Interactive GUI | Streamlit workspace with code editor, request routing and reports |
 | Prompt engineering | Zero-shot role prompts, structured review steps, reflection pass; displayed in UI |
 | LangChain + LCEL | LangChain prompt templates composed with model and output parser |
