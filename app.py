@@ -43,8 +43,8 @@ with st.sidebar:
     st.markdown("### ◈ ReviewCrew")
     st.caption("A multi-agent Python review desk")
     st.divider()
-    provider = st.selectbox("Model provider", ["Deterministic only", "Ollama", "OpenAI-compatible API"], help="Static review always works. A chat model adds natural-language analysis and suggested fixes.")
-    model_name = st.text_input("Model", value="llama3.1" if provider == "Ollama" else "gpt-4o-mini", disabled=provider == "Deterministic only")
+    provider = st.selectbox("Model provider", ["Deterministic only", "OpenAI-compatible API"], help="Static review always works. A chat model adds natural-language analysis and suggested fixes.")
+    model_name = st.text_input("Model", value="gpt-4o-mini", disabled=provider == "Deterministic only")
     api_key = ""
     base_url = ""
     if provider == "OpenAI-compatible API":

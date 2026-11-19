@@ -5,9 +5,6 @@ from langchain_core.prompts import ChatPromptTemplate
 
 
 def make_model(provider: str, model_name: str, api_key: str = "", base_url: str = ""):
-    if provider == "Ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(model=model_name, temperature=0.2)
     from langchain_openai import ChatOpenAI
     options = {"model": model_name, "api_key": api_key, "temperature": 0.2}
     if base_url.strip():
