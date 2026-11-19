@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 
 import streamlit as st
+import keyring
 from langchain_core.prompts import ChatPromptTemplate
 
 from reviewcrew.analyzer import analyze, function_names, score
@@ -14,6 +15,26 @@ from reviewcrew.retrieval import open_store, retrieve
 from reviewcrew.routing import detect_intent, should_retrieve
 from reviewcrew.routing import detect_intent_with_model
 from reviewcrew.runner import run_cases
+
+GEMINI_KEYRING_SERVICE = "ReviewCrew"
+GEMINI_KEYRING_ACCOUNT = "gemini-api-key"
+GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def read_saved_api_key() -> str:
+    try:
+        return keyring.get_password(GEMINI_KEYRING_SERVICE, GEMINI_KEYRING_ACCOUNT) or ""
+    except Exception:
+        return ""
+
+
+def save_api_key(api_key: str) -> bool:
+    try:
+        keyring.set_password(GEMINI_KEYRING_SERVICE, GEMINI_KEYRING_ACCOUNT, api_key)
+        return True
+    except Exception:
+        return False
 
 st.set_page_config(page_title="ReviewCrew · Agentic Code Review", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
 
@@ -43,13 +64,17 @@ with st.sidebar:
     st.markdown("### ◈ ReviewCrew")
     st.caption("A multi-agent Python review desk")
     st.divider()
-    provider = st.selectbox("Model provider", ["Deterministic only", "OpenAI-compatible API"], help="Static review always works. A chat model adds natural-language analysis and suggested fixes.")
-    model_name = st.text_input("Model", value="gpt-4o-mini", disabled=provider == "Deterministic only")
-    api_key = ""
-    base_url = ""
-    if provider == "OpenAI-compatible API":
-        api_key = st.text_input("API key", type="password", help="Kept in memory for this session only.")
-        base_url = st.text_input("Base URL (optional)", placeholder="https://api.openai.com/v1")
+    saved_api_key = read_saved_api_key()
+    api_key = st.text_input(
+        "Gemini API key",
+        value=saved_api_key,
+        type="password",
+        help="Saved securely in this computer's credential manager for future launches.",
+        key="gemini_api_key",
+    ).strip()
+    key_save_failed = bool(api_key and api_key != saved_api_key and not save_api_key(api_key))
+    if key_save_failed:
+        st.warning("The key works for this session, but this computer could not save it securely for next time.")
     st.divider()
     st.markdown("**Review route**")
     route_choice = st.selectbox("Choose an intent", ["Auto-detect", "Full review", "Debug", "Style review", "Explain", "Generate tests"], label_visibility="collapsed")
@@ -92,18 +117,18 @@ with right:
         intents = {"Full review": "review", "Debug": "debug", "Style review": "style", "Explain": "explain", "Generate tests": "test"}
         model = None
         model_error = None
-        if provider != "Deterministic only":
+        if api_key:
             try:
-                model = make_model(provider, model_name.strip(), api_key, base_url)
+                model = make_model("Gemini", GEMINI_MODEL, api_key, GEMINI_BASE_URL)
             except Exception as exc:
-                model_error = str(exc)
+                model_error = f"Could not initialize the Gemini model ({type(exc).__name__})."
         if route_choice == "Auto-detect":
             intent, rationale, confidence = detect_intent(request)
             if model:
                 try:
                     intent, rationale, confidence = detect_intent_with_model(request, model)
                 except Exception as exc:
-                    model_error = f"LLM router fell back to the deterministic route: {exc}"
+                model_error = f"Gemini router call failed ({type(exc).__name__}); used the built-in route instead."
         else:
             intent, rationale, confidence = intents[route_choice], "Intent selected explicitly in the sidebar.", 1.0
         do_retrieve, retrieval_reason = should_retrieve(intent, request)
@@ -126,7 +151,7 @@ with right:
                 if intent in {"debug", "review"} and findings:
                     result["fix"] = lcel(ChatPromptTemplate.from_messages([("system", FIX_SYSTEM), ("human", FIX_USER)]), model, findings=json.dumps(result["findings"], ensure_ascii=False), context=context, code=code)
             except Exception as exc:
-                model_error = str(exc)
+                model_error = f"Gemini request failed ({type(exc).__name__}). Check that the API key is valid and Gemini API access is enabled for it."
 
         if intent == "test" or route_choice == "Generate tests":
             names = function_names(tree)
