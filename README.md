@@ -4,16 +4,16 @@ ReviewCrew is a multi-agent code review and debugging app built for Assignment 1
 
 ## What it demonstrates
 
-- **Bug Finder**: Python AST checks for common correctness risks and suspicious constructs.
-- **Style Reviewer**: naming, structure, and readability checks.
-- **Fixer**: proposes a patch using retrieved guidance and findings.
-- **Test Writer**: generates safe, deterministic input cases from function signatures and can run them with an explicit opt-in.
+- **Bug Finder**: Python AST and Gemini checks look for correctness, security, boundary, and runtime risks.
+- **Style/Lint Reviewer**: Ruff checks common Python errors, conventions, imports, and naming.
+- **Fixer**: returns a complete corrected program grounded in findings and retrieved guidance.
+- **Test Writer**: generates behavior assertions for the corrected program and can execute them in Docker.
 - **Intent router**: routes debugging, style, explanation, or test requests.
-- **Agentic RAG**: the route selects whether coding guidance is retrieved; results are included in grounded LLM prompts.
-- **LangChain + LCEL**: `ChatPromptTemplate | model | StrOutputParser` is used for model calls.
+- **Agentic RAG**: the intent route controls whether Chroma retrieval runs; Python guidance and debugging examples with source references are included in the review prompt.
+- **LangChain + LCEL**: `ChatPromptTemplate | model | PydanticOutputParser` connects the prompt, Gemini, and structured review output.
 - **ChromaDB**: persists coding guidance and retrieves by similarity; local Hugging Face embeddings are used by default.
 
-The reviewer remains useful without an API key: deterministic agents still produce findings and tests. Gemini features become active when a Gemini API key is entered. Prompt templates and routing decisions are visible in the app's **Prompt & Architecture** panel.
+The deterministic AST and Ruff checks remain available without a key. Enter a Gemini API key to enable the coordinated Bug Finder, Style/Lint Reviewer, Fixer, Coach, and Test Writer output. The review team answers in one structured model request to reduce waiting. Prompt templates and routing decisions are visible in **Prompt & Architecture**.
 
 ## Start
 
@@ -27,7 +27,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-On first launch, Chroma downloads the configured embedding model (`sentence-transformers/all-MiniLM-L6-v2`) if it is not cached. Set `HF_HOME` to a writable cache directory if needed.
+On first use, Chroma may download the configured embedding model (`sentence-transformers/all-MiniLM-L6-v2`) if it is not cached. The model and Chroma store are cached for the life of the Streamlit process to avoid reloading them on every review. Set `HF_HOME` to a writable cache directory if needed.
 
 ### Gemini API key
 
@@ -35,20 +35,25 @@ Paste your Gemini API key into the sidebar. The app uses Google's OpenAI-compati
 
 Your code and prompts are sent to Google's Gemini API when the review runs; do not submit secrets or proprietary code unless approved for that service.
 
-## Code execution safety
+## Isolated test execution
 
-Test execution is **off by default**. If enabled, the app starts the submitted Python code in a temporary working directory with a short timeout and stripped environment. This is a convenience guard, **not an OS security sandbox**: arbitrary code can still access resources available to the app's operating-system account. Only enable execution for code you trust, and run the app locally. For shared or public deployments, disable execution or place it behind a real container/VM sandbox with network and filesystem restrictions.
+Install and start Docker Desktop, then download the small Python sandbox image once:
+
+```bash
+docker pull python:3.12-alpine
+```
+
+The **Run generated assertions in Docker** option is on by default. It runs the model's behavior assertions against the proposed corrected program in a disposable container with no network, a read-only root filesystem, dropped Linux capabilities, process/memory/CPU limits, and no host files mounted. If Docker or the image is unavailable, the report explains how to enable the sandbox; the app never falls back to unsandboxed execution. Docker containers provide process isolation but are not a substitute for a dedicated VM when handling highly hostile code.
 
 ## Knowledge base
 
-The initial knowledge base contains concise Python review guidance authored for the demo. Chroma persists it under `.reviewcrew/chroma/`. Add or revise guidance in `reviewcrew/knowledge.py`; the app synchronizes the documents on launch. No external code corpus is uploaded.
+The initial knowledge base contains concise Python review guidance and debugging examples, with relevant Python documentation and PEP references in Chroma metadata. Chroma persists it under `.reviewcrew/chroma/`. Add or revise guidance in `reviewcrew/knowledge.py`; the app synchronizes the documents on launch. No user code is uploaded to Chroma.
 
 ## Project layout
 
 ```text
 app.py                 Streamlit interface and routed workflow
-reviewcrew/            Agents, analyzers, retrieval, model and runner
-prompts/               Human-readable prompt templates
+reviewcrew/            Review team, analyzers, retrieval, model and sandbox runner
 .streamlit/            Streamlit theme and configuration
 ```
 
@@ -58,12 +63,14 @@ prompts/               Human-readable prompt templates
 |---|---|
 | LLM integration | Gemini API through Google's OpenAI-compatible endpoint |
 | Interactive GUI | Streamlit workspace with code editor, request routing and reports |
-| Prompt engineering | Zero-shot role prompts, structured review steps, reflection pass; displayed in UI |
+| Prompt engineering | Role-based zero-shot prompt, output schema, reflection/self-check; all active system and user prompts displayed in UI |
 | LangChain + LCEL | LangChain prompt templates composed with model and output parser |
-| Agentic RAG | Intent-dependent retrieval before reviewer/coach model calls |
-| Intent detection/routing | Rule-based route confidence with explicit selector override |
-| Vector DB | Chroma persistent collection with local sentence-transformer embeddings |
+| Agentic RAG | Intent-dependent Chroma retrieval before the review team call, with source metadata |
+| Intent detection/routing | Local intent classifier plus explicit route selector and retrieval policy |
+| Vector DB | Persistent Chroma collection with local sentence-transformer embeddings |
 
-## Limitations
+## Scope and limitations
 
-This is an educational reviewer, not a formal security audit. Static checks are intentionally conservative and may miss defects or flag code that is safe in context. LLM feedback may be incorrect. Review changes before adopting them.
+The review roles are orchestrated in one structured model response to reduce latency. Static checks and Ruff findings are deterministic; model findings and generated tests can still be wrong. Review proposed changes and test expectations. The Docker runner is an educational sandbox, not a hardened service for untrusted public traffic.
+
+This is an educational reviewer, not a formal security audit. Static checks are intentionally conservative and may miss defects or flag code that is safe in context. Generated tests can be wrong, and the Docker sandbox is not a hardened multi-tenant service. Review changes and test expectations before adopting them.

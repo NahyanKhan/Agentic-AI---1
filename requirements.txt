@@ -7,3 +7,4 @@ langchain-huggingface>=0.1,<2
 sentence-transformers>=3,<6
 chromadb>=0.5,<2
 pydantic>=2,<3
+ruff>=0.8,<1

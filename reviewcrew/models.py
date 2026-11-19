@@ -1,17 +1,16 @@
-"""Optional LangChain chat model setup and LCEL call helpers."""
+"""Gemini-compatible LangChain model configuration."""
 
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
+GEMINI_MODEL = "gemini-3.8-flash"
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
-def make_model(provider: str, model_name: str, api_key: str = "", base_url: str = ""):
+def make_model(api_key: str):
     from langchain_openai import ChatOpenAI
-    options = {"model": model_name, "api_key": api_key, "temperature": 0.2}
-    if base_url.strip():
-        options["base_url"] = base_url.strip()
-    return ChatOpenAI(**options)
-
-
-def lcel(prompt: ChatPromptTemplate, model, **values) -> str:
-    chain = prompt | model | StrOutputParser()
-    return chain.invoke(values)
+    return ChatOpenAI(
+        model=GEMINI_MODEL,
+        api_key=api_key,
+        base_url=GEMINI_BASE_URL,
+        temperature=0.2,
+        timeout=45,
+        max_retries=0,
+    )

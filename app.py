@@ -3,23 +3,22 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-import streamlit as st
 import keyring
-from langchain_core.prompts import ChatPromptTemplate
+import streamlit as st
+from langchain_core.output_parsers import PydanticOutputParser
 
-from reviewcrew.analyzer import analyze, function_names, score
-from reviewcrew.models import lcel, make_model
-from reviewcrew.prompts import (COACH_SYSTEM, COACH_USER, FIX_SYSTEM, FIX_USER,
-                                REVIEW_SYSTEM, REVIEW_USER, ROUTER_SYSTEM, ROUTE_USER)
+from reviewcrew.analyzer import Finding, analyze, score
+from reviewcrew.linter import lint_python
+from reviewcrew.models import make_model
+from reviewcrew.prompts import TEAM_SYSTEM, TEAM_USER
 from reviewcrew.retrieval import open_store, retrieve
 from reviewcrew.routing import detect_intent, should_retrieve
-from reviewcrew.routing import detect_intent_with_model
 from reviewcrew.runner import run_cases
+from reviewcrew.schemas import TeamReview
+from reviewcrew.team import run_review_team
 
 GEMINI_KEYRING_SERVICE = "ReviewCrew"
 GEMINI_KEYRING_ACCOUNT = "gemini-api-key"
-GEMINI_MODEL = "gemini-3.8-flash"
-GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 def read_saved_api_key() -> str:
@@ -35,6 +34,12 @@ def save_api_key(api_key: str) -> bool:
         return True
     except Exception:
         return False
+
+
+@st.cache_resource(show_spinner=False)
+def cached_knowledge_store():
+    """Load the embedding model and Chroma collection once per app process."""
+    return open_store()
 
 st.set_page_config(page_title="ReviewCrew · Agentic Code Review", page_icon="◈", layout="wide", initial_sidebar_state="expanded")
 
@@ -78,16 +83,15 @@ with st.sidebar:
     st.divider()
     st.markdown("**Review route**")
     route_choice = st.selectbox("Choose an intent", ["Auto-detect", "Full review", "Debug", "Style review", "Explain", "Generate tests"], label_visibility="collapsed")
-    run_tests = st.checkbox("Run generated assertions", value=False, help="Runs submitted Python in a temporary subprocess with a short timeout. This is not a security sandbox; only use code you trust.")
-    st.caption("Execution stays off until you opt in.")
+    run_tests = st.checkbox("Run generated assertions in Docker", value=True, help="Runs generated behavior tests in a disposable Docker container with no network, a read-only filesystem, and resource limits. Requires Docker Desktop.")
     st.divider()
     st.caption("Local corpus · ChromaDB · LCEL")
 
 AGENTS = [
-    ("01 · Bug Finder", "AST checks catch common correctness, safety and edge-case risks."),
-    ("02 · Style Reviewer", "Naming, readability and maintainability signals."),
-    ("03 · Fixer", "Minimal patch suggestions that preserve the apparent API."),
-    ("04 · Test Writer", "Deterministic assertion ideas, with optional opt-in run."),
+    ("01 · Bug Finder", "AST and Gemini checks look for logic, boundary, and runtime risks."),
+    ("02 · Style Reviewer", "Ruff checks Python conventions alongside code readability."),
+    ("03 · Fixer", "Suggests a corrected program using the findings and retrieved guidance."),
+    ("04 · Test Writer", "Creates behavior tests and can run them in an isolated container."),
 ]
 cols = st.columns(4)
 for col, (title, copy) in zip(cols, AGENTS):
@@ -109,7 +113,7 @@ def normalizeName(Name):
     code = st.text_area("Python source", value=sample, height=350, label_visibility="collapsed", help="Paste a Python snippet. Avoid secrets and proprietary code when using a remote API.")
     request = st.text_input("What should the team focus on?", value="Review this code and suggest fixes for bugs and safety risks.", placeholder="e.g. Find edge cases and explain how to fix them")
     run = st.button("Run agent review  →", type="primary", use_container_width=True)
-    st.caption("Python only · Findings combine deterministic checks with optional model reasoning")
+    st.caption("Python only · Findings combine AST, Ruff, and Gemini review")
 
 with right:
     st.markdown("#### Review report")
@@ -117,57 +121,98 @@ with right:
         intents = {"Full review": "review", "Debug": "debug", "Style review": "style", "Explain": "explain", "Generate tests": "test"}
         model = None
         model_error = None
-        if api_key:
-            try:
-                model = make_model("Gemini", GEMINI_MODEL, api_key, GEMINI_BASE_URL)
-            except Exception as exc:
-                model_error = f"Could not initialize the Gemini model ({type(exc).__name__})."
-        if route_choice == "Auto-detect":
-            intent, rationale, confidence = detect_intent(request)
-            if model:
+        rag_error = None
+        lint_error = None
+        docs = []
+        with st.status("Starting the review team…", expanded=True) as progress:
+            if api_key:
                 try:
-                    intent, rationale, confidence = detect_intent_with_model(request, model)
+                    model = make_model(api_key)
                 except Exception as exc:
-                    model_error = f"Gemini router call failed ({type(exc).__name__}); used the built-in route instead."
-        else:
-            intent, rationale, confidence = intents[route_choice], "Intent selected explicitly in the sidebar.", 1.0
-        do_retrieve, retrieval_reason = should_retrieve(intent, request)
-        findings, tree, syntax_error = analyze(code)
-        scores = score(findings)
-        store, rag_error, docs = None, None, []
-        if do_retrieve:
-            try:
-                store = open_store()
-                docs = retrieve(store, f"{intent}: {request}\n{code}", k=4)
-            except Exception as exc:
-                rag_error = f"Chroma retrieval unavailable: {exc}"
-        context = "\n".join(f"- {d.page_content}" for d in docs) or "No retrieved guidance available."
-        result = {"time": datetime.now().astimezone().isoformat(timespec="seconds"), "intent": intent, "rationale": rationale, "confidence": confidence, "retrieve": do_retrieve, "retrieval_reason": retrieval_reason, "documents": [d.metadata.get("title", "Guidance") for d in docs], "findings": [f.as_dict() for f in findings], "scores": scores, "syntax_error": syntax_error, "llm_review": "", "fix": "", "coach": "", "tests": [], "execution": None}
+                    model_error = f"Gemini setup failed ({type(exc).__name__})."
 
-        if model and not syntax_error:
-            try:
-                result["llm_review"] = lcel(ChatPromptTemplate.from_messages([("system", REVIEW_SYSTEM), ("human", REVIEW_USER)]), model, intent=intent, request=request, context=context, findings=json.dumps(result["findings"], ensure_ascii=False), code=code)
-                result["coach"] = lcel(ChatPromptTemplate.from_messages([("system", COACH_SYSTEM), ("human", COACH_USER)]), model, intent=intent, scores=json.dumps(scores), findings=json.dumps(result["findings"], ensure_ascii=False), context=context, code=code)
-                if intent in {"debug", "review"} and findings:
-                    result["fix"] = lcel(ChatPromptTemplate.from_messages([("system", FIX_SYSTEM), ("human", FIX_USER)]), model, findings=json.dumps(result["findings"], ensure_ascii=False), context=context, code=code)
-            except Exception as exc:
-                model_error = f"Gemini request failed ({type(exc).__name__}). Check that the API key is valid and Gemini API access is enabled for it."
+            progress.write("Routing your request…")
+            intent, rationale, confidence = detect_intent(request) if route_choice == "Auto-detect" else (intents[route_choice], "Intent selected in the sidebar.", 1.0)
 
-        if intent == "test" or route_choice == "Generate tests":
-            names = function_names(tree)
-            result["tests"] = [{"name": n, "assertion": f"assert callable({n!r})"} for n in names]
-            if names:
-                result["tests"] = [{"name": n, "assertion": f"assert callable({n})"} for n in names]
-            if not names:
-                result["tests"] = [{"name": "syntax", "assertion": "assert True  # Add function-specific examples for this snippet"}]
-        elif function_names(tree):
-            result["tests"] = [{"name": n, "assertion": f"assert callable({n})"} for n in function_names(tree)]
-        if run_tests and result["tests"] and not syntax_error:
-            result["execution"] = run_cases(code, result["tests"])
+            do_retrieve, retrieval_reason = should_retrieve(intent, request)
+            progress.write("Checking the code and style…")
+            findings, _tree, syntax_error = analyze(code)
+            lint_findings, lint_error = lint_python(code)
+            findings.extend(lint_findings)
+            scores = score(findings)
+
+            if do_retrieve:
+                progress.write("Loading related coding guidance…")
+                try:
+                    store = cached_knowledge_store()
+                    docs = retrieve(store, f"{intent}: {request}\n{code}", k=4)
+                except Exception as exc:
+                    rag_error = f"Knowledge retrieval failed ({type(exc).__name__}). Install requirements and retry."
+            context = "\n".join(
+                f"- {d.page_content} [Source: {d.metadata.get('source', 'ReviewCrew guide')}]"
+                for d in docs
+            ) or "No retrieved guidance available."
+            model_review = None
+            if model and not syntax_error:
+                progress.write("Gemini’s review, fix, coaching, and test-writing roles are working in one request…")
+                try:
+                    model_review = run_review_team(
+                        model,
+                        intent=intent,
+                        request=request,
+                        code=code,
+                        context=context,
+                        findings=json.dumps([f.as_dict() for f in findings], ensure_ascii=False),
+                    )
+                    model_findings = [Finding(**item.model_dump()) for item in model_review.findings]
+                    findings.extend(
+                        item for item in model_findings
+                        if (item.message, item.line) not in {(f.message, f.line) for f in findings}
+                    )
+                    scores = score(findings)
+                except Exception as exc:
+                    model_error = f"Gemini review failed ({type(exc).__name__}). Check the saved key, network, and API availability."
+
+            tests = [item.model_dump() for item in model_review.tests] if model_review else []
+            candidate = model_review.corrected_code.strip() if model_review else ""
+            if candidate.startswith("```python"):
+                candidate = candidate[len("```python"):].strip()
+                if candidate.endswith("```"):
+                    candidate = candidate[:-3].rstrip()
+            elif candidate.startswith("```"):
+                candidate = candidate[3:].strip()
+                if candidate.endswith("```"):
+                    candidate = candidate[:-3].rstrip()
+
+            execution = None
+            if run_tests and tests and not syntax_error:
+                progress.write("Running generated behavior tests in the Docker sandbox…")
+                execution = run_cases(candidate or code, tests)
+
+            result = {
+                "time": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "intent": intent,
+                "rationale": rationale,
+                "confidence": confidence,
+                "retrieve": do_retrieve,
+                "retrieval_reason": retrieval_reason,
+                "documents": [f"{d.metadata.get('title', 'Guidance')} — {d.metadata.get('source', 'ReviewCrew guide')}" for d in docs],
+                "findings": [f.as_dict() for f in findings],
+                "scores": scores,
+                "syntax_error": syntax_error,
+                "llm_review": model_review.summary if model_review else "",
+                "fix": candidate,
+                "coach": model_review.coaching if model_review else "",
+                "tests": tests,
+                "execution": execution,
+            }
+            progress.update(label="Review complete", state="complete", expanded=False)
+
         st.session_state["report"] = result
         st.session_state["code_snapshot"] = code
         st.session_state["model_error"] = model_error
         st.session_state["rag_error"] = rag_error
+        st.session_state["lint_error"] = lint_error
 
     report = st.session_state.get("report")
     if not report:
@@ -182,6 +227,10 @@ with right:
             st.warning(st.session_state["rag_error"])
         if st.session_state.get("model_error"):
             st.warning(f"Model call failed; deterministic results are shown. {st.session_state['model_error']}")
+        elif not report["llm_review"]:
+            st.info("Enter a Gemini API key in the sidebar to enable the AI review, suggested correction, and behavior-test generation.")
+        if st.session_state.get("lint_error"):
+            st.warning(st.session_state["lint_error"])
         m1, m2, m3 = st.columns(3)
         for col, name in zip([m1, m2, m3], ["Overall", "Correctness", "Style"]):
             col.markdown(f'<div class="metric"><div class="metric-label">{name}</div><div class="metric-value">{report["scores"][name]}<span style="font-size:.85rem;color:#8ba0a3"> / 100</span></div></div>', unsafe_allow_html=True)
@@ -202,32 +251,35 @@ with right:
             st.markdown("##### Coach Agent")
             st.markdown(report["coach"])
         if report["fix"]:
-            with st.expander("Fixer Agent · suggested patch"):
-                st.markdown(report["fix"])
+            with st.expander("Fixer Agent · corrected program"):
+                st.code(report["fix"], language="python")
         if report["tests"]:
-            with st.expander(f"Test Writer Agent · {len(report['tests'])} checks", expanded=True):
+            with st.expander(f"Test Writer Agent · {len(report['tests'])} behavior tests", expanded=True):
                 for item in report["tests"]:
+                    st.markdown(f"**{item['name']}** · {item['purpose']}")
                     st.code(item["assertion"], language="python")
                 if report["execution"]:
                     if report["execution"]["passed"]:
-                        st.success("Generated assertions passed.")
+                        st.success("Generated behavior tests passed against the corrected program.")
                     else:
-                        st.error("Generated assertions failed or timed out.")
+                        st.error("Generated tests did not pass. The runner may also need Docker Desktop and the sandbox image.")
                         if report["execution"]["stderr"]:
                             st.code(report["execution"]["stderr"])
         if report["documents"]:
             with st.expander("Retrieved knowledge sources"):
-                for title in report["documents"]:
-                    st.markdown(f"- {title} · ReviewCrew Python review guide")
+                for document in report["documents"]:
+                    st.markdown(f"- {document}")
         with st.expander("Prompt & Architecture · assignment evidence"):
-            st.markdown("**Intent router system prompt**")
-            st.code(ROUTER_SYSTEM, language="text")
-            st.markdown("**Reviewer system prompt**")
-            st.code(REVIEW_SYSTEM, language="text")
-            st.markdown("**Reviewer user prompt template**")
-            st.code(REVIEW_USER, language="text")
+            st.markdown("**Intent routing rules**")
+            st.code("Auto-detect the request locally as debug, style, explain, test, or review. The chosen intent controls retrieval and the review task.", language="text")
+            st.markdown("**Multi-role review team system prompt**")
+            st.code(TEAM_SYSTEM, language="text")
+            st.markdown("**Multi-role review team user prompt template**")
+            st.code(TEAM_USER, language="text")
+            st.markdown("**Structured output instructions supplied to Gemini**")
+            st.code(PydanticOutputParser(pydantic_object=TeamReview).get_format_instructions(), language="text")
             st.markdown("**LCEL composition**")
-            st.code("ChatPromptTemplate.from_messages([...]) | chat_model | StrOutputParser()", language="python")
+            st.code("ChatPromptTemplate | Gemini ChatOpenAI-compatible model | PydanticOutputParser", language="text")
             st.markdown("**Agent decision**")
             st.json({"route": report["intent"], "retrieval": report["retrieve"], "reason": report["retrieval_reason"], "retrieved_titles": report["documents"]})
 
