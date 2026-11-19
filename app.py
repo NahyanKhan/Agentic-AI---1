@@ -128,7 +128,7 @@ with right:
                 try:
                     intent, rationale, confidence = detect_intent_with_model(request, model)
                 except Exception as exc:
-                model_error = f"Gemini router call failed ({type(exc).__name__}); used the built-in route instead."
+                    model_error = f"Gemini router call failed ({type(exc).__name__}); used the built-in route instead."
         else:
             intent, rationale, confidence = intents[route_choice], "Intent selected explicitly in the sidebar.", 1.0
         do_retrieve, retrieval_reason = should_retrieve(intent, request)
