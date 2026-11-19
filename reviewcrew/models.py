@@ -1,16 +1,22 @@
 """Gemini-compatible LangChain model configuration."""
 
-GEMINI_MODEL = "gemini-3.8-flash"
+from __future__ import annotations
+
+import os
+
+from langchain_openai import ChatOpenAI
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_FALLBACK_MODEL = "gemini-1.5-flash"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
-def make_model(api_key: str):
-    from langchain_openai import ChatOpenAI
+def make_model(api_key: str, model_name: str = "") -> ChatOpenAI:
     return ChatOpenAI(
-        model=GEMINI_MODEL,
+        model=model_name or GEMINI_MODEL,
         api_key=api_key,
         base_url=GEMINI_BASE_URL,
         temperature=0.2,
         timeout=45,
-        max_retries=0,
+        max_retries=1,
     )

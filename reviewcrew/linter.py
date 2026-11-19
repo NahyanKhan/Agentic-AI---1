@@ -1,5 +1,7 @@
 """Run Ruff over pasted Python without executing it."""
 
+from __future__ import annotations
+
 import json
 import subprocess
 import sys
@@ -35,10 +37,9 @@ def lint_python(code: str) -> tuple[list[Finding], str | None]:
 
     findings = []
     for item in messages:
-        code_id = (item.get("code") or "")
+        code_id = item.get("code") or ""
         message = item.get("message", "Style issue detected.")
         location = item.get("location") or {}
-        end_location = item.get("end_location") or {}
         fix = item.get("fix") or {}
         suggestion = fix.get("message") or "Apply the matching Python lint convention."
         severity = "medium" if code_id.startswith(("F", "B")) else "low"

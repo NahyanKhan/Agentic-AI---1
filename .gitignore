@@ -5,3 +5,5 @@ __pycache__/
 .reviewcrew/
 .env
 *.log
+.pytest_cache/
+tests/__pycache__/

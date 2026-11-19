@@ -1,7 +1,8 @@
 """Small, curated Python review corpus for grounded agent responses."""
 
-from langchain_core.documents import Document
+from __future__ import annotations
 
+from langchain_core.documents import Document
 
 GUIDANCE = [
     ("Input validation", "Validate inputs at public function boundaries. Check type, range, empty values and malformed data. Raise a clear ValueError or TypeError rather than silently coercing unexpected input."),
@@ -25,14 +26,24 @@ GUIDANCE = [
 ]
 
 SOURCES = {
-    "Mutable defaults": "https://docs.python.org/3/tutorial/controlflow.html#default-argument-values",
+    "Input validation": "https://docs.python.org/3/library/exceptions.html#ValueError",
     "Exception handling": "https://docs.python.org/3/tutorial/errors.html",
+    "Mutable defaults": "https://docs.python.org/3/tutorial/controlflow.html#default-argument-values",
     "Resource management": "https://docs.python.org/3/tutorial/inputoutput.html#reading-and-writing-files",
+    "Side effects": "https://peps.python.org/pep-0008/#programming-recommendations",
+    "Numeric edge cases": "https://docs.python.org/3/library/stdtypes.html#numeric-types-int-float-complex",
     "Naming and readability": "https://peps.python.org/pep-0008/",
     "Testing": "https://docs.python.org/3/library/unittest.html",
-    "Deterministic tests": "https://docs.python.org/3/library/unittest.html",
     "Security": "https://docs.python.org/3/library/functions.html#eval",
+    "Complexity": "https://wiki.python.org/moin/TimeComplexity",
+    "Mutation during iteration": "https://docs.python.org/3/tutorial/controlflow.html#for-statements",
+    "Sorting assumptions": "https://docs.python.org/3/howto/sorting.html",
+    "Off-by-one errors": "https://docs.python.org/3/library/stdtypes.html#range",
+    "Boundary testing": "https://docs.python.org/3/library/unittest.html",
+    "Deterministic tests": "https://docs.python.org/3/library/unittest.html",
     "Debugging an empty sequence": "https://docs.python.org/3/library/exceptions.html#ZeroDivisionError",
+    "Mutation debugging": "https://docs.python.org/3/tutorial/datastructures.html",
+    "Boundary debugging": "https://docs.python.org/3/library/stdtypes.html#typesseq",
 }
 
 
@@ -40,7 +51,7 @@ def documents() -> list[Document]:
     return [
         Document(
             page_content=f"{title}: {body}",
-            metadata={"title": title, "source": SOURCES.get(title, "ReviewCrew curated debugging and Python review examples")},
+            metadata={"title": title, "source": SOURCES.get(title, "https://docs.python.org/3/")},
         )
         for title, body in GUIDANCE
     ]
