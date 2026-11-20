@@ -171,8 +171,10 @@ def test_runner_docker_diagnostic_guidance():
 
 def test_model_configuration():
     assert GEMINI_BASE_URL == "https://generativelanguage.googleapis.com/v1beta/openai/"
-    assert GEMINI_MODEL == "gemini-3.8-flash"
-    assert GEMINI_FALLBACK_MODEL == "gemini-3.5-flash-lite"
+    assert GEMINI_MODEL == "gemini-3.5-flash-lite"
+    assert GEMINI_FALLBACK_MODEL == "gemini-3.8-flash"
     m = make_model("fake-api-key")
-    assert m.model_name == "gemini-3.8-flash"
-    assert m.temperature == 0.2
+    assert m.model_name == "gemini-3.5-flash-lite"
+    assert m.model_kwargs["reasoning_effort"] == "minimal"
+    assert m.timeout == 30
+    assert m.max_retries == 0

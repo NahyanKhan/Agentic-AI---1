@@ -193,7 +193,9 @@ with right:
                 progress.write("Loading related coding guidance…")
                 try:
                     store = cached_knowledge_store()
-                    docs = retrieve(store, f"{intent}: {request}\n{code}", k=4)
+                    # Keep the embedding query short; the full code and findings
+                    # are still included in the Gemini review prompt below.
+                    docs = retrieve(store, f"{intent}: {request}\n{code[:800]}", k=2)
                 except Exception as exc:
                     rag_error = f"Knowledge retrieval failed ({type(exc).__name__}). Install requirements and retry."
 
@@ -205,7 +207,7 @@ with right:
             model_review = None
             rendered_user_prompt = ""
             if model and not syntax_error:
-                progress.write("Gemini squad (Bug Finder, Style Reviewer, Fixer, Test Writer) reviewing…")
+                progress.write("Gemini review running. This usually finishes within 30 seconds…")
                 try:
                     parser = PydanticOutputParser(pydantic_object=TeamReview)
                     rendered_user_prompt = TEAM_USER.format(
