@@ -233,7 +233,7 @@ with right:
                 except Exception as exc:
                     model_error = f"Gemini review failed ({type(exc).__name__}). Check the saved key, network, and API availability."
 
-            # If Gemini provided behavior tests, use them; otherwise provide signature-based fallback tests
+            # Never invent expected behavior from signatures if Gemini did not return tests.
             if model_review and model_review.tests:
                 tests = [item.model_dump() for item in model_review.tests]
             else:
@@ -342,6 +342,8 @@ with right:
                             st.code(report["execution"]["stderr"])
                         if report["execution"]["stdout"]:
                             st.code(report["execution"]["stdout"])
+        else:
+            st.info("No behavior tests were generated for this review. Test generation requires a successful Gemini review.")
 
         if report["documents"]:
             with st.expander("Retrieved knowledge sources"):

@@ -6,8 +6,8 @@ import os
 
 from langchain_openai import ChatOpenAI
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-GEMINI_FALLBACK_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_FALLBACK_MODEL = "gemini-3.5-flash-lite"
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 

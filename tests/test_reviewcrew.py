@@ -124,14 +124,11 @@ def test_knowledge_base_sources():
         assert len(doc.page_content) > 20
 
 
-def test_fallback_tests_generation():
+def test_offline_fallback_does_not_create_vacuous_tests():
     code = "def add(a, b): return a + b\ndef greet(): return 'hi'\n"
     tree = ast.parse(code)
     fallback = generate_fallback_tests(tree)
-    assert len(fallback) == 2
-    names = [t["name"] for t in fallback]
-    assert "test_add_signature" in names
-    assert "test_greet_no_args" in names
+    assert fallback == []
 
 
 def test_pydantic_schemas():
@@ -174,8 +171,8 @@ def test_runner_docker_diagnostic_guidance():
 
 def test_model_configuration():
     assert GEMINI_BASE_URL == "https://generativelanguage.googleapis.com/v1beta/openai/"
-    assert GEMINI_MODEL == "gemini-2.5-flash"
-    assert GEMINI_FALLBACK_MODEL == "gemini-1.5-flash"
+    assert GEMINI_MODEL == "gemini-3.8-flash"
+    assert GEMINI_FALLBACK_MODEL == "gemini-3.5-flash-lite"
     m = make_model("fake-api-key")
-    assert m.model_name == "gemini-2.5-flash"
+    assert m.model_name == "gemini-3.8-flash"
     assert m.temperature == 0.2

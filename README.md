@@ -31,7 +31,7 @@ On first launch, Chroma may download the configured embedding model (`sentence-t
 
 ### Gemini API key
 
-Enter your Gemini API key in the sidebar. The app uses Google's OpenAI-compatible Gemini endpoint (`gemini-2.5-flash` with automatic fallback to `gemini-1.5-flash`), so no endpoint setup is needed. The key is saved securely in your computer's credential manager (via `keyring`) and reused on future launches. It is never logged, printed, or written to Git repository files.
+Enter your Gemini API key in the sidebar. The app uses Google's OpenAI-compatible Gemini endpoint (`gemini-3.8-flash` with automatic fallback to `gemini-3.5-flash-lite`), so no endpoint setup is needed. The key is saved securely in your computer's credential manager (via `keyring`) and reused on future launches. It is never logged, printed, or written to Git repository files. Behavior tests are generated only when the Gemini review returns them; the app does not show placeholder checks as tests when the model is unavailable.
 
 ## Isolated test execution
 

@@ -136,25 +136,11 @@ def function_names(tree: ast.Module | None) -> list[str]:
 
 
 def generate_fallback_tests(tree: ast.Module | None) -> list[dict]:
-    """Generate basic initial behavior checks from function signatures when offline."""
-    tests = []
-    if tree is None:
-        return tests
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef):
-            name = node.name
-            args = node.args.args
-            if not args:
-                tests.append({
-                    "name": f"test_{name}_no_args",
-                    "assertion": f"assert {name}() is not None or True",
-                    "purpose": f"Execute `{name}()` with no arguments to verify basic execution.",
-                })
-            else:
-                arg_names = [a.arg for a in args]
-                tests.append({
-                    "name": f"test_{name}_signature",
-                    "assertion": f"assert callable({name})",
-                    "purpose": f"Verify `{name}` is defined and callable with parameters: {', '.join(arg_names)}.",
-                })
-    return tests
+    """Return no tests when expected behavior cannot be inferred safely.
+
+    Function signatures alone do not define expected results. The Test Writer
+    should generate assertions from the code and request; placeholder checks
+    would make the UI imply that behavior had been verified when it had not.
+    """
+    del tree
+    return []
